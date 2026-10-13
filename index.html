@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile Hosting Panel</title>
+  <meta name="theme-color" content="#15142a">
+  <style>
+    :root{color-scheme:dark;--bg:#0d1020;--card:#171b31;--line:#2a3150;--text:#f2f4ff;--muted:#a8b0ce;--accent:#8b7cff;--good:#66d9a8}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#25214d 0,transparent 35%),var(--bg);color:var(--text);font:16px system-ui,-apple-system,sans-serif}
+    main{max-width:860px;margin:auto;padding:22px 14px 48px}.hero{padding:22px 4px 14px}.eyebrow{color:#b8afff;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{font-size:clamp(28px,7vw,42px);margin:8px 0}p{color:var(--muted);line-height:1.55}.card{background:rgba(23,27,49,.95);border:1px solid var(--line);border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 10px 35px #0002}
+    h2{font-size:18px;margin:0 0 12px}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}
+    input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0e1224;color:var(--text);font:inherit}
+    button{border:0;border-radius:11px;background:var(--accent);color:#100d25;font-weight:800;padding:12px 15px;font:inherit;cursor:pointer;margin-top:12px}button.secondary{background:#292f4d;color:var(--text)}button.danger{background:#582b3a;color:#ffdbe4}
+    .status{padding:10px 12px;border-radius:10px;background:#11162a;color:var(--muted);white-space:pre-wrap;font-size:14px;margin:12px 0}.project{border:1px solid var(--line);padding:14px;border-radius:13px;margin-top:10px}.project strong{display:block;margin-bottom:5px}.project a{color:#bdb5ff;overflow-wrap:anywhere}
+    .hidden{display:none!important}.small{font-size:12px;color:var(--muted)}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 9px;font-size:12px;color:var(--good)}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">Hosting API Starter</div>
+    <h1>Your HTML Hosting Panel</h1>
+    <p>Create an account, upload an HTML page, manage your projects and request custom-domain mapping. This starter is intended for testing and learning.</p>
+    <span class="pill" id="apiStatus">Checking API…</span>
+  </header>
+
+  <section class="card" id="authCard">
+    <h2>Account</h2>
+    <div class="row">
+      <div><label for="email">Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+      <div><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="8" placeholder="At least 8 characters"></div>
+    </div>
+    <div class="row"><button id="signup">Create account</button><button class="secondary" id="signin">Sign in</button></div>
+    <div class="status" id="authMsg">Sign in or create an account to manage projects.</div>
+  </section>
+
+  <section class="card hidden" id="dashboard">
+    <div class="row" style="align-items:center"><h2 style="flex:2">Dashboard</h2><button class="secondary" id="logout" style="flex:0">Sign out</button></div>
+    <label for="projectName">Project name</label><input id="projectName" placeholder="My first website">
+    <label for="siteFile">HTML file (.html or .htm, max 1 MB)</label><input id="siteFile" type="file" accept=".html,.htm,text/html">
+    <button id="upload">Upload / Update website</button>
+    <div class="status" id="dashMsg">Your projects will appear below.</div>
+    <h2 style="margin-top:22px">My projects</h2>
+    <div id="projects"></div>
+  </section>
+
+  <section class="card">
+    <h2>API test</h2>
+    <p class="small">Health endpoint: <code>/api/health</code></p>
+    <button class="secondary" id="health">Test API</button>
+    <div class="status" id="healthMsg">Not tested yet.</div>
+  </section>
+  <p class="small">Security note: uploaded HTML is untrusted content. The server applies a sandbox CSP. For production multi-user hosting, use a separate site origin, backups, abuse controls and domain ownership verification.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+let apiBase = location.origin;
+let sb = null;
+let currentUser = null;
+const $ = id => document.getElementById(id);
+const show = (id, yes) => $(id).classList.toggle("hidden", !yes);
+const msg = (id, value) => $(id).textContent = value;
+async function init() {
+  try {
+    const r = await fetch("/api/config");
+    const cfg = await r.json();
+    sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    const h = await fetch("/api/health");
+    const data = await h.json();
+    $("apiStatus").textContent = data.ok ? "API Online" : "API unavailable";
+    $("apiStatus").style.color = data.ok ? "#66d9a8" : "#ff8ca1";
+    const { data: sessionData } = await sb.auth.getSession();
+    if (sessionData.session) { currentUser = sessionData.session.user; loggedIn(); }
+  } catch (e) {
+    $("apiStatus").textContent = "API setup needed";
+    msg("authMsg", "API config not ready. Check Render environment variables and Supabase setup.");
+  }
+}
+async function token() {
+  const { data } = await sb.auth.getSession();
+  return data.session?.access_token || "";
+}
+async function api(url, options={}) {
+  const t = await token();
+  const headers = {...(options.headers||{})};
+  if (t) headers.Authorization = "Bearer " + t;
+  const r = await fetch(url, {...options, headers});
+  const d = await r.json().catch(()=>({error:"Unexpected server response"}));
+  if (!r.ok) throw new Error(d.error || "Request failed");
+  return d;
+}
+function loggedIn() {
+  show("dashboard", true); show("authCard", false); loadProjects();
+}
+async function signUp() {
+  const email=$("email").value.trim(), password=$("password").value;
+  if (!email || password.length < 8) return msg("authMsg","Enter a valid email and password of at least 8 characters.");
+  const {data,error}=await sb.auth.signUp({email,password});
+  if(error) return msg("authMsg",error.message);
+  if(data.session){currentUser=data.user;loggedIn();msg("dashMsg","Account created.");}
+  else msg("authMsg","Account created. Check your email to confirm, then sign in.");
+}
+async function signIn() {
+  const {data,error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+  if(error) return msg("authMsg",error.message);
+  currentUser=data.user; loggedIn();
+}
+async function loadProjects() {
+  try {
+    const d=await api("/api/projects");
+    $("projects").innerHTML="";
+    if(!d.projects.length){$("projects").textContent="No projects yet.";return;}
+    d.projects.forEach(p=>{
+      const el=document.createElement("div");el.className="project";
+      const title=document.createElement("strong");title.textContent=p.name;el.appendChild(title);
+      const a=document.createElement("a");a.href=p.url;a.target="_blank";a.rel="noopener";a.textContent=p.url;el.appendChild(a);
+      const controls=document.createElement("div");controls.className="row";
+      const rename=document.createElement("button");rename.className="secondary";rename.textContent="Rename";
+      rename.onclick=async()=>{const n=prompt("New project name",p.name);if(!n)return;try{await api("/api/projects/"+p.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n})});loadProjects();}catch(e){alert(e.message)}};
+      const domain=document.createElement("button");domain.className="secondary";domain.textContent="Add domain";
+      domain.onclick=async()=>{const d=prompt("Enter domain only, e.g. www.example.com");if(!d)return;try{const result=await api("/api/projects/"+p.id+"/domain",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({domain:d})});alert(result.note);loadProjects();}catch(e){alert(e.message)}};
+      const del=document.createElement("button");del.className="danger";del.textContent="Delete";
+      del.onclick=async()=>{if(!confirm("Delete this project?"))return;try{await api("/api/projects/"+p.id,{method:"DELETE"});loadProjects();}catch(e){alert(e.message)}};
+      controls.append(rename,domain,del);el.appendChild(controls);$("projects").appendChild(el);
+    });
+  } catch(e) { msg("dashMsg",e.message); }
+}
+$("signup").onclick=()=>signUp().catch(e=>msg("authMsg",e.message));
+$("signin").onclick=()=>signIn().catch(e=>msg("authMsg",e.message));
+$("logout").onclick=async()=>{await sb.auth.signOut();currentUser=null;show("dashboard",false);show("authCard",true);};
+$("upload").onclick=async()=>{
+  const f=$("siteFile").files[0];if(!f)return msg("dashMsg","Choose an HTML file first.");
+  const fd=new FormData();fd.append("siteFile",f);fd.append("name",$("projectName").value.trim()||f.name);
+  try{const d=await api("/api/projects",{method:"POST",body:fd});msg("dashMsg","Website uploaded: "+d.project.url);loadProjects();}
+  catch(e){msg("dashMsg",e.message);}
+};
+$("health").onclick=async()=>{try{const r=await fetch("/api/health");msg("healthMsg",JSON.stringify(await r.json(),null,2));}catch(e){msg("healthMsg",e.message)}};
+init();
+</script>
+</body>
+</html>
