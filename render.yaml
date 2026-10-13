@@ -1,15 +1,18 @@
 services:
-  - type: web
-    name: mobile-hosting-api
-    runtime: node
-    plan: free
-    buildCommand: npm install
-    startCommand: npm start
-    healthCheckPath: /api/health
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
+
+- type: web
+  name: mobile-hosting-api
+  runtime: node
+  plan: free
+  buildCommand: npm install
+  startCommand: npm start
+  healthCheckPath: /api/health
+  envVars:
+  - key: SUPABASE_URL
+    value: https://jhtndfmgkaqgypczxotk.supabase.co
+  - key: SUPABASE_SERVICE_ROLE_KEY
+    sync: false
+  - key: SUPABASE_ANON_KEY
+    sync: false
+  - key: NODE_VERSION
+    value: "20"
